@@ -1430,7 +1430,7 @@ body.pc-open { overflow: hidden; }
       <p class="fine" id="mConfirm"></p>
       <div class="gradepanel" id="gradePanel" hidden></div>
       <div class="ripbar"><button type="button" class="buy ghost" id="mPhoto">Add a photo of this player</button><button type="button" class="buy ghost" id="mPhotoDel" hidden>Remove photo</button></div>
-      <p class="fine" id="mPhotoNote">Cards use ESPN player photos by default. Upload a picture to replace it on every card of this player in this browser.</p>
+      <p class="fine" id="mPhotoNote">Cards use the original card artwork unless you add a licensed in-game action photo. Uploads appear on every card of this player in this browser.</p>
     </div>
   </div>
 </div>
@@ -1508,27 +1508,6 @@ body.pc-open { overflow: hidden; }
     ['Patrick Surtain II','DEN','CB',4],['Derek Stingley Jr.','HOU','CB',4],['Will Johnson','ARI','CB',2,1],
     ['Kyle Hamilton','BAL','S',4],['Brian Branch','DET','S',3],['Malaki Starks','BAL','S',2,1],
   ].map(([n, t, pos, tier, rc]) => ({ n, t, pos, tier, rc: !!rc }));
-  const normalizedPlayerName = name => name.toLowerCase().replace(/\s+(jr|sr|ii|iii|iv)\.?$/, '').replace(/[^a-z0-9]/g, '');
-  const rosterNameCounts = new Map();
-  for (const [, , , , sourceName] of window.NFL_ROSTER) {
-    const key = normalizedPlayerName(sourceName);
-    rosterNameCounts.set(key, (rosterNameCounts.get(key) || 0) + 1);
-  }
-  for (const [displayName, team, rosterPosition, id, sourceName] of window.NFL_ROSTER) {
-    const nameKey = normalizedPlayerName(sourceName);
-    const pos = rosterPosition === 'DE' ? 'EDGE' : rosterPosition;
-    const matchingId = P.find(p => PLAYER_PHOTO_IDS[p.n] === id);
-    const matchingName = P.filter(p => normalizedPlayerName(p.n) === nameKey && (p.pos === pos || p.pos === 'EDGE' && rosterPosition === 'DE'));
-    if (matchingId || rosterNameCounts.get(nameKey) === 1 && matchingName.length === 1) {
-      PLAYER_PHOTO_IDS[(matchingId || matchingName[0]).n] = id;
-      continue;
-    }
-    let n = displayName;
-    if (P.some(p => p.n === n)) n = `${sourceName} (${team})`;
-    if (P.some(p => p.n === n)) n = `${sourceName} (${team} ${id})`;
-    P.push({ n, t: team, pos, tier: 1, rc: false });
-    PLAYER_PHOTO_IDS[n] = id;
-  }
   // hobby demand, 1-100: roughly how hot each player's cards are on the real 2025 market.
   // Young and rookie QBs lead, skill players follow, and defenders sell for very little.
   const DEMAND = { // recalibrated Oct 2026 from GemRate eBay sales, NFLPA sales rankings and recent hobby coverage
@@ -1567,7 +1546,7 @@ body.pc-open { overflow: hidden; }
   P.forEach(p => { p.draft = p.rc ? 2025 : (DRAFT[p.n] || 2020); });
   let CUR_YEAR = 2025; // the set year being produced right now
   const isRC = c => BY_NAME[c.n].draft === (c.y || 2025);
-  const BY_NAME = Object.fromEntries(P.map(p => [p.n, p]));
+  let BY_NAME = Object.fromEntries(P.map(p => [p.n, p]));
   P.forEach(p => { p.d = DEMAND[p.n] || 20; });
   const TIER_BASE = [0, 2, 3, 5, 9, 16];
 
@@ -1914,14 +1893,6 @@ body.pc-open { overflow: hidden; }
   S.sealed = S.sealed.filter(x => BOXES[x.key]);
   const save = () => { try { localStorage.setItem(SAVE, JSON.stringify(S)); } catch (e) {} };
   const PHOTO_KEY = 'sunday-chrome-photos';
-  const PLAYER_PHOTO_FALLBACKS = {
-    'Jack Strand': 'https://static.www.nfl.com/image/upload/f_auto,q_auto/league/oadw9h9otuauaiv1vxvz',
-    'Elijah Jones': 'https://static.www.nfl.com/image/upload/f_auto,q_auto/league/lweacpqc2c7vb7rswsry',
-    'Khordae Sydnor': 'https://static.www.nfl.com/image/upload/f_auto,q_auto/league/innpkllpeaeysgm7eepa',
-    'Zion Washington': 'https://i.ytimg.com/vi/5_nyK9Ke3iQ/hqdefault.jpg',
-    'Treyvhon Saunders': 'https://static.www.nfl.com/image/upload/f_auto,q_auto/league/prohanzkzzuqykewm8ws',
-    'Maceo Beard-Aigret': 'https://i.ytimg.com/vi/u5paf5UoMnE/hqdefault.jpg',
-  };
   const PLAYER_PHOTO_IDS = {
     'Patrick Mahomes': '3139477', 'Josh Allen': '3918298', 'Lamar Jackson': '3916387', 'Joe Burrow': '3915511', 'Jayden Daniels': '4426348',
     'Jalen Hurts': '4040715', 'C.J. Stroud': '4432577', 'Justin Herbert': '4038941', 'Caleb Williams': '4431611', 'Drake Maye': '4431452',
@@ -1945,6 +1916,28 @@ body.pc-open { overflow: hidden; }
     'Fred Warner': '3138826', 'Roquan Smith': '3915189', 'Jack Campbell': '4569465', 'Jihaad Campbell': '4685287', 'Patrick Surtain II': '4372012',
     'Derek Stingley Jr.': '4426434', 'Will Johnson': '4685408', 'Kyle Hamilton': '4575517', 'Brian Branch': '4692025', 'Malaki Starks': '4685530',
   };
+  const normalizedPlayerName = name => name.toLowerCase().replace(/\s+(jr|sr|ii|iii|iv)\.?$/, '').replace(/[^a-z0-9]/g, '');
+  const rosterNameCounts = new Map();
+  for (const [, , , , sourceName] of window.NFL_ROSTER) {
+    const key = normalizedPlayerName(sourceName);
+    rosterNameCounts.set(key, (rosterNameCounts.get(key) || 0) + 1);
+  }
+  for (const [displayName, team, rosterPosition, id, sourceName] of window.NFL_ROSTER) {
+    const nameKey = normalizedPlayerName(sourceName);
+    const pos = rosterPosition === 'DE' ? 'EDGE' : rosterPosition;
+    const matchingId = P.find(p => PLAYER_PHOTO_IDS[p.n] === id);
+    const matchingName = P.filter(p => normalizedPlayerName(p.n) === nameKey && (p.pos === pos || p.pos === 'EDGE' && rosterPosition === 'DE'));
+    if (matchingId || rosterNameCounts.get(nameKey) === 1 && matchingName.length === 1) {
+      PLAYER_PHOTO_IDS[(matchingId || matchingName[0]).n] = id;
+      continue;
+    }
+    let n = displayName;
+    if (P.some(p => p.n === n)) n = `${sourceName} (${team})`;
+    if (P.some(p => p.n === n)) n = `${sourceName} (${team} ${id})`;
+    P.push({ n, t: team, pos, tier: 1, rc: false, draft: 2020, d: 20 });
+    PLAYER_PHOTO_IDS[n] = id;
+  }
+  BY_NAME = Object.fromEntries(P.map(p => [p.n, p]));
   let PHOTOS = {};
   try { PHOTOS = JSON.parse(localStorage.getItem(PHOTO_KEY) || '{}') || {}; } catch (e) {}
   const savePhotos = () => { try { localStorage.setItem(PHOTO_KEY, JSON.stringify(PHOTOS)); return true; } catch (e) { return false; } };
@@ -1957,7 +1950,7 @@ body.pc-open { overflow: hidden; }
   const esc = s => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   function cardHTML(c, extra = '') {
     const p = BY_NAME[c.n], v = V[c.v], [city, c1, c2] = TEAMS[p.t];
-    const photo = PHOTOS[p.n] || PLAYER_PHOTO_FALLBACKS[p.n] || (PLAYER_PHOTO_IDS[p.n] ? `https://a.espncdn.com/i/headshots/nfl/players/full/${PLAYER_PHOTO_IDS[p.n]}.png` : '');
+    const photo = PHOTOS[p.n] || '';
     const br = brandOf(c);
     const cls = `b-${c.b || 'chrome'} ` + (v.kind === 'ins' ? `ins i-${c.v}` : `v-${c.v}`) + (v.caseHit ? ' case' : '') + (photo ? ' has-photo' : '');
     const serial = v.run ? `<div class="serial">${v.run === 1 ? '1/1' : String(c.s).padStart(String(v.run).length, '0') + '/' + v.run}</div>` : '';
@@ -3028,7 +3021,7 @@ body.pc-open { overflow: hidden; }
     rows.push(['Value', `${fmt(valueOf(c))} coins`]);
     $('mDl').innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join('');
     $('mSell').textContent = `Sell to the shop for ${fmt(shopPrice(c))}`; $('mSell').dataset.armed = ''; $('mConfirm').textContent = '';
-    $('mPhoto').textContent = PHOTOS[p.n] ? 'Change photo' : PLAYER_PHOTO_IDS[p.n] ? 'Replace player photo' : 'Add a photo of this player';
+    $('mPhoto').textContent = PHOTOS[p.n] ? 'Change photo' : 'Add an in-game photo';
     $('mPhotoDel').hidden = !PHOTOS[p.n] || !mine;
     if (mine) $('mMarket').hidden = false, $('mMarket').onclick = () => { closeModal(); mTab = 'sell'; sellPick = c.id; show('market'); };
     else $('mMarket').hidden = true;
