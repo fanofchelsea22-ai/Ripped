@@ -369,6 +369,7 @@ h2.sec small { font: 500 13px var(--body); letter-spacing: 0; text-transform: no
 .slot.top.hit .face.front .card { box-shadow: 0 0 0 .15em rgba(255,255,255,.6), 0 0 3em var(--glow, #fff); }
 .ripbar { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .ripbar .buy { width: auto; padding-inline: 18px; }
+#ripBar { position: relative; z-index: 60; }
 .hint { margin: 0; color: var(--muted); font: 600 14px var(--label); letter-spacing: .12em; text-transform: uppercase; text-align: center; min-height: 1.3em; }
 .hint b { color: var(--brass); }
 .tray { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; min-height: 10px; max-width: 900px; }
@@ -2687,6 +2688,12 @@ body.pc-open { overflow: hidden; }
   // ---------- the desk ----------
   let deskBox = null; // a finished box stays on the desk until you leave
   const curBox = () => S.box || deskBox;
+  const scrollMatTarget = el => el?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+  const keepMatTargetVisible = el => {
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.top < 0 || rect.bottom > innerHeight) scrollMatTarget(el);
+  };
   const owned = id => S.binder.find(c => c.id === id);
   function boxHasPatch(box) {
     return !!box.patchPulled || box.pulled.some(id => { const c = owned(id); return c && isPatchCard(c); });
@@ -2866,6 +2873,8 @@ body.pc-open { overflow: hidden; }
       const best = hits.sort((x, y) => valueOf(y) - valueOf(x))[0];
       $('dkDoneText').innerHTML = `${bx.packs} pack${bx.packs === 1 ? '' : 's'} opened · ${hits.length} hits${best ? ` · best pull <b>${esc(best.n)}</b>, ${esc(describe(best))}` : ''}<br>Paid ${fmt(d.paid)} · pulled ${fmt(d.value)} coins · <b class="${d.value >= d.paid ? 'up' : 'down'}">${d.value >= d.paid ? 'up' : 'down'} ${fmt(Math.abs(d.value - d.paid))}</b>`;
     }
+    const target = S.box ? $('dkBox').querySelector('.tbox') : deskBox ? $('dkDone') : null;
+    requestAnimationFrame(() => keepMatTargetVisible(target));
   }
   $('dkAll').onclick = () => {
     const b = S.box; if (!b || ripping()) return;
@@ -2882,7 +2891,7 @@ body.pc-open { overflow: hidden; }
     }
     save(); header();
     if (best) celebrate(best);
-    R = { desk: true, done: false, cards: [], idx: 0 }; deskAfterPack();
+    R = { desk: true, fromBox: true, done: false, cards: [], idx: 0 }; deskAfterPack();
   };
   $('dkShop').onclick = () => { deskBox = null; renderDesk(); show('packs'); };
   $('dkBinder').onclick = () => show('binder');
@@ -2906,7 +2915,6 @@ body.pc-open { overflow: hidden; }
     R = { b, key, paid, cards, idx: 0, flipped: false, torn: false, cardRevealed: false, fromBox: !!fromBox, desk: true, done: false };
     if (view !== 'box') show('box');
     $('matRip').appendChild($('rip')); $('rip').hidden = false; $('matIdle').hidden = true; deskHints();
-    if (innerWidth < 960) $('dkMid').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
     $('tray').innerHTML = ''; $('summary').hidden = true; document.querySelector('.stage').hidden = false; $('allBtn').hidden = true; $('revealBtn').hidden = true; $('tearBtn').hidden = false;
     $('tearBtn').textContent = 'Flip pack to the back';
     $('ripHint').textContent = 'Flip the pack over to find the vertical tear strip';
@@ -2942,6 +2950,7 @@ body.pc-open { overflow: hidden; }
     };
     lip.addEventListener('pointerup', finishPeel);
     lip.addEventListener('pointercancel', e => finishPeel(e, false));
+    requestAnimationFrame(() => { if (R && !R.done) keepMatTargetVisible($('tearBtn')); });
   }
   function flipPack() {
     if (!R || R.flipped || R.torn) return;
@@ -3903,7 +3912,17 @@ body.pc-open { overflow: hidden; }
     mode = m;
     $('seat').hidden = m !== 'seat'; $('room').hidden = m !== 'mat';
     $('sitBack').hidden = !has3d;
-    if (m === 'mat') { renderDesk(); $('room').classList.add('lean-in'); setTimeout(() => $('room').classList.remove('lean-in'), 700); }
+    if (m === 'mat') {
+      renderDesk(); $('room').classList.add('lean-in'); setTimeout(() => $('room').classList.remove('lean-in'), 700);
+      requestAnimationFrame(() => {
+        if (mode !== 'mat') return;
+        const cutter = $('cutter'), box = $('dkBox').querySelector('.tbox');
+        const cutterRect = cutter.getBoundingClientRect(), boxRect = box?.getBoundingClientRect();
+        if (cutterRect.top < 0 || cutterRect.bottom > innerHeight || boxRect && (boxRect.top < 0 || boxRect.bottom > innerHeight)) {
+          cutter.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+        }
+      });
+    }
     notify(); seatHint();
   }
   function seatHint() {
