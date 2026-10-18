@@ -1430,7 +1430,7 @@ body.pc-open { overflow: hidden; }
       <p class="fine" id="mConfirm"></p>
       <div class="gradepanel" id="gradePanel" hidden></div>
       <div class="ripbar"><button type="button" class="buy ghost" id="mPhoto">Add a photo of this player</button><button type="button" class="buy ghost" id="mPhotoDel" hidden>Remove photo</button></div>
-      <p class="fine" id="mPhotoNote">Cards use the original card artwork unless you add a licensed in-game action photo. Uploads appear on every card of this player in this browser.</p>
+      <p class="fine" id="mPhotoNote">Cards use openly licensed, verified game photos from Wikimedia Commons when available; credits and license links appear in card details. The original artwork remains when no match is found. Uploads appear on every card of this player in this browser.</p>
     </div>
   </div>
 </div>
@@ -1941,6 +1941,8 @@ body.pc-open { overflow: hidden; }
   let PHOTOS = {};
   try { PHOTOS = JSON.parse(localStorage.getItem(PHOTO_KEY) || '{}') || {}; } catch (e) {}
   const savePhotos = () => { try { localStorage.setItem(PHOTO_KEY, JSON.stringify(PHOTOS)); return true; } catch (e) { return false; } };
+  const PLAYER_ACTION_PHOTOS = new Map();
+  const ACTION_PHOTO_LOOKUPS = new Set();
 
   // ---------- card markup ----------
   const initials = n => {
@@ -1950,7 +1952,9 @@ body.pc-open { overflow: hidden; }
   const esc = s => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   function cardHTML(c, extra = '') {
     const p = BY_NAME[c.n], v = V[c.v], [city, c1, c2] = TEAMS[p.t];
-    const photo = PHOTOS[p.n] || '';
+    const actionPhoto = PLAYER_ACTION_PHOTOS.get(p.n);
+    const photo = PHOTOS[p.n] || actionPhoto?.url || '';
+    if (!photo) loadActionPhoto(p);
     const br = brandOf(c);
     const cls = `b-${c.b || 'chrome'} ` + (v.kind === 'ins' ? `ins i-${c.v}` : `v-${c.v}`) + (v.caseHit ? ' case' : '') + (photo ? ' has-photo' : '');
     const serial = v.run ? `<div class="serial">${v.run === 1 ? '1/1' : String(c.s).padStart(String(v.run).length, '0') + '/' + v.run}</div>` : '';
@@ -1966,8 +1970,8 @@ body.pc-open { overflow: hidden; }
       : c.v === 'postcard' ? `<div class="instag"><small>Greetings from</small>${esc(city)}</div>`
       : c.v === 'bolt' || c.v === 'pixel' || c.v === 'glitch' ? '' : `<div class="instag">${esc(v.name)}</div>`;
     const slab = c.g ? `<div class="slab-label"><b>PRISTINE</b><span>${c.y || 2025} ${esc(br.short)} ${esc(last.toUpperCase())}<br>${esc(GRADE_NAME[c.g])}</span><i>${c.g}</i></div>` : '';
-    return `<div class="card ${cls} ${c.g ? 'slabbed g' + c.g : ''} ${extra}" style="--c1:${c1};--c2:${c2}" data-id="${c.id}">${slab}
-      <div class="art"></div>${v.art ? caseArt(c.v, hash(c.id + p.n), p, c1, c2) : '<div class="turf"></div>'}${ins}${playerSVG(p, c1, c2)}${photo ? `<img class="photo" src="${photo}" alt="" loading="lazy" decoding="async">` : ''}${relic}<div class="vign"></div><div class="grain"></div>
+    return `<div class="card ${cls} ${c.g ? 'slabbed g' + c.g : ''} ${extra}" style="--c1:${c1};--c2:${c2}" data-id="${c.id}" data-photo-player="${esc(p.n)}">${slab}
+      <div class="art"></div>${v.art ? caseArt(c.v, hash(c.id + p.n), p, c1, c2) : '<div class="turf"></div>'}${ins}${playerSVG(p, c1, c2)}${photo ? `<img class="photo" src="${esc(photo)}" alt="${esc(p.n)} playing football" loading="lazy" decoding="async">` : ''}${relic}<div class="vign"></div><div class="grain"></div>
       <div class="setmark">${br.short} · ${String(c.y || 2025).slice(2)}</div>${serial}
       <div class="posg">${p.pos}</div>
       ${isRC(c) ? '<div class="rc">RC</div>' : ''}${flag}${sig}
@@ -1975,6 +1979,94 @@ body.pc-open { overflow: hidden; }
       <div class="plate"><b><small>${esc(first)}</small>${esc(last)}</b><span><i class="pchip">${p.pos === 'EDGE' ? 'DE' : p.pos}</i>${city.toUpperCase()}${isRC(c) ? ' · Rookie' : ''}</span></div>
       <div class="holo"></div>
     </div>`;
+  }
+
+  function htmlText(value) {
+    const node = document.createElement('div');
+    node.innerHTML = value || '';
+    return node.textContent.trim();
+  }
+  function loadActionPhoto(p) {
+    if (PHOTOS[p.n] || PLAYER_ACTION_PHOTOS.has(p.n) || ACTION_PHOTO_LOOKUPS.has(p.n)) return;
+    ACTION_PHOTO_LOOKUPS.add(p.n);
+    const searchName = p.n.replace(/\s+\([A-Z]{2,3}\)$/, '');
+    const params = new URLSearchParams({
+      action: 'query', generator: 'search', gsrsearch: `"${searchName}" football`,
+      gsrnamespace: '6', gsrlimit: '30', prop: 'imageinfo|categories',
+      iiprop: 'url|extmetadata', iiurlwidth: '1000', cllimit: '50',
+      format: 'json', origin: '*',
+    });
+    fetch(`https://commons.wikimedia.org/w/api.php?${params}`)
+      .then(response => {
+        if (!response.ok) throw new Error(`Wikimedia Commons returned HTTP ${response.status}`);
+        return response.json();
+      })
+      .then(data => {
+        const pages = Object.values(data.query?.pages || {});
+        let selectedPhoto = null;
+        for (const page of pages) {
+          const info = page.imageinfo?.[0];
+          const meta = info?.extmetadata || {};
+          const title = page.title.replace(/^File:/, '');
+          const description = htmlText(meta.ImageDescription?.value);
+          const categories = (page.categories || []).map(category => category.title.replace(/^Category:/, ''));
+          const normalize = value => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const exactPlayerMatch = normalize(`${title} ${description} ${categories.join(' ')}`).includes(normalize(searchName));
+          const gameCategory = categories.some(category => /\b(nfl|american football|football)\b/i.test(category))
+            && categories.some(category => /\b(week \d|vs\.?|game|season|bowl)\b/i.test(category));
+          const actionDescription = /\b(runs?|running|throws?|throwing|passes|passing|catches|catching|tackles?|sacks?|snaps?|touchdowns?|intercepts?|playing|game action)\b/i.test(`${title} ${description}`);
+          const license = htmlText(meta.LicenseShortName?.value);
+          if (!info?.thumburl || !info.descriptionurl || !exactPlayerMatch || !(gameCategory || actionDescription)
+            || /\b(headshot|portrait|white house|press conference|media day)\b/i.test(`${title} ${description}`)
+            || !/^(CC0|CC BY(?:-SA)?(?:\s|$)|Public domain)/i.test(license)) continue;
+          const imageUrl = new URL(info.thumburl), pageUrl = new URL(info.descriptionurl);
+          if (imageUrl.protocol !== 'https:' || !['upload.wikimedia.org', 'thumb.wikimedia.org'].includes(imageUrl.hostname)
+            || pageUrl.protocol !== 'https:' || pageUrl.hostname !== 'commons.wikimedia.org') continue;
+          selectedPhoto = {
+            url: imageUrl.href,
+            pageUrl: pageUrl.href,
+            artist: htmlText(meta.Artist?.value) || 'Wikimedia Commons contributor',
+            license,
+          };
+          if (actionDescription) break;
+        }
+        if (!selectedPhoto) {
+          PLAYER_ACTION_PHOTOS.set(p.n, null);
+          return;
+        }
+        PLAYER_ACTION_PHOTOS.set(p.n, selectedPhoto);
+        if (modalPlayerName === p.n && !$('modal').hidden) updatePhotoCredit(selectedPhoto);
+        for (const card of document.querySelectorAll('.card[data-photo-player]')) {
+          if (card.dataset.photoPlayer !== p.n || PHOTOS[p.n] || card.querySelector('.photo')) continue;
+          const image = document.createElement('img');
+          image.className = 'photo';
+          image.src = selectedPhoto.url;
+          image.alt = `${p.n} playing football`;
+          image.loading = 'lazy';
+          image.decoding = 'async';
+          image.onerror = () => {
+            image.remove();
+            card.classList.remove('has-photo');
+            if (PLAYER_ACTION_PHOTOS.get(p.n)) {
+              PLAYER_ACTION_PHOTOS.set(p.n, null);
+              for (const matchingCard of document.querySelectorAll('.card[data-photo-player]')) {
+                if (matchingCard.dataset.photoPlayer === p.n) {
+                  matchingCard.querySelector('.photo')?.remove();
+                  matchingCard.classList.remove('has-photo');
+                }
+              }
+              if (modalPlayerName === p.n && !$('modal').hidden) updatePhotoCredit(null);
+            }
+            console.warn(`Could not load the Wikimedia Commons action photo for ${p.n}.`);
+          };
+          card.appendChild(image);
+          card.classList.add('has-photo');
+        }
+      })
+      .catch(error => {
+        PLAYER_ACTION_PHOTOS.set(p.n, null);
+        console.warn(`Could not search Wikimedia Commons for an action photo of ${p.n}.`, error);
+      });
   }
 
   // ---------- player illustration: shaded, padded athlete in team uniform, posed by position ----------
@@ -3003,6 +3095,24 @@ body.pc-open { overflow: hidden; }
 
   // ---------- modal ----------
   let modalId = null;
+  let modalPlayerName = null;
+  function updatePhotoCredit(photo) {
+    const details = $('mDl');
+    const existing = [...details.querySelectorAll('dt')].find(term => term.textContent === 'Photo credit');
+    if (!photo) {
+      existing?.nextElementSibling?.remove();
+      existing?.remove();
+      return;
+    }
+    let term = existing, value = existing?.nextElementSibling;
+    if (!term || !value) {
+      term = document.createElement('dt');
+      term.textContent = 'Photo credit';
+      value = document.createElement('dd');
+      details.append(term, value);
+    }
+    value.innerHTML = `<a href="${esc(photo.pageUrl)}" target="_blank" rel="noopener noreferrer">${esc(photo.artist)} · ${esc(photo.license)} (Wikimedia Commons)</a>`;
+  }
   function openModal(id, other) {
     const mine = S.binder.find(x => x.id === id), c = mine || other; if (!c) return;
     modalId = mine ? id : null;
@@ -3010,6 +3120,7 @@ body.pc-open { overflow: hidden; }
     $('mDisplay').textContent = mine && S.showcase.includes(id) ? 'Remove from display case' : S.showcase.length >= 3 ? 'Display case is full' : 'Put in display case';
     $('mDisplay').disabled = !!mine && !S.showcase.includes(id) && S.showcase.length >= 3;
     const p = BY_NAME[c.n], v = V[c.v];
+    modalPlayerName = p.n;
     $('mCard').innerHTML = cardHTML(c, 'idle'); tilt($('mCard').firstElementChild);
     $('mTag').textContent = describe(c);
     $('mName').textContent = p.n;
@@ -3019,7 +3130,8 @@ body.pc-open { overflow: hidden; }
     if (v.kind === 'auto') rows.push(['Autograph', v.patch ? 'Simulated on-card autograph with jersey patch' : 'On-card, simulated']);
     if (c.g) rows.push(['Grade', `Pristine ${c.g} · ${GRADE_NAME[c.g]}`], ['Raw value', `${fmt(valueOf({ ...c, g: 0 }))} coins`]);
     rows.push(['Value', `${fmt(valueOf(c))} coins`]);
-    $('mDl').innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join('');
+    $('mDl').innerHTML = rows.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('');
+    updatePhotoCredit(PLAYER_ACTION_PHOTOS.get(p.n));
     $('mSell').textContent = `Sell to the shop for ${fmt(shopPrice(c))}`; $('mSell').dataset.armed = ''; $('mConfirm').textContent = '';
     $('mPhoto').textContent = PHOTOS[p.n] ? 'Change photo' : 'Add an in-game photo';
     $('mPhotoDel').hidden = !PHOTOS[p.n] || !mine;
@@ -3190,7 +3302,7 @@ body.pc-open { overflow: hidden; }
     }
     gradeTick();
   }
-  const closeModal = () => { $('modal').hidden = true; modalId = null; };
+  const closeModal = () => { $('modal').hidden = true; modalId = null; modalPlayerName = null; };
   $('mClose').onclick = closeModal;
   $('modal').addEventListener('click', e => { if (e.target === $('modal')) closeModal(); });
   addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').hidden) closeModal(); });
