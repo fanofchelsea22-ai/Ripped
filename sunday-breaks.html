@@ -252,6 +252,7 @@ h2.sec small { font: 500 13px var(--body); letter-spacing: 0; text-transform: no
   background-size: 6em 6em; }
 .card .vign { position: absolute; inset: .5em; border-radius: .28em; z-index: 1; pointer-events: none; background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0,0,0,.45)); }
 .card .photo { position: absolute; inset: .5em; width: calc(100% - 1em); height: calc(100% - 1em); object-fit: cover; object-position: 50% 20%; border-radius: .28em; z-index: 2; pointer-events: none; }
+.card.has-photo .photo { object-position: 50% 24%; filter: saturate(1.12) contrast(1.06); }
 .card.has-photo .turf, .card.has-photo .art::after { display: none; }
 .card .posg { display: none; }
 .card .art { background-color: var(--c1); }
@@ -975,6 +976,12 @@ body.pc-open { overflow: hidden; }
   box-shadow: 0 0 0 .07em rgba(255,255,255,.65), inset 0 .1em 0 rgba(255,255,255,.35), 0 .12em .25em rgba(0,0,0,.45); text-shadow: 0 .05em 0 rgba(0,0,0,.4); }
 /* Sunday Chrome base cards get a light refractor sheen */
 .card.b-chrome.v-base { --frame: linear-gradient(135deg, #eef1f4, #ffffff 22%, #cfd6dd 45%, #ffffff 62%, #dfe4e9 85%, #f6f8fa); --holo: .14; }
+/* Action photos get a brighter chrome edge and a restrained rainbow refractor. */
+.card.b-chrome.has-photo.v-base { --holo: .34; }
+.card.b-chrome.has-photo::before {
+  background: linear-gradient(125deg, rgba(255,255,255,.38), rgba(255,255,255,.04) 28%, transparent 48%, rgba(255,255,255,.14));
+  box-shadow: inset 0 0 0 .07em rgba(255,255,255,.82), inset 0 0 0 .16em rgba(12,20,32,.3), inset .2em .2em .45em rgba(255,255,255,.24);
+}
 /* brand nameplates keep their own look */
 .card.b-blitz .plate { padding-left: 3.3em; }
 .card.b-elite .plate { padding-left: 3.1em; padding-right: 3.1em; }
