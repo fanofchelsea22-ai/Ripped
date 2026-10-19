@@ -245,12 +245,13 @@ h2.sec small { font: 500 13px var(--body); letter-spacing: 0; text-transform: no
 }
 .card .fig { position: absolute; left: 4%; width: 92%; top: 2.2em; bottom: 3.7em; height: auto; z-index: 1; filter: drop-shadow(-.05em -.06em .03em rgba(255,236,200,.65)) drop-shadow(0 .35em .5em rgba(0,0,0,.5)); }
 .card.face-card .fig { display: none; }
+.card.has-photo .fig { display: none; }
 .card .fig > g.body { filter: url(#photoreal); }
 .card .grain { position: absolute; inset: .5em; border-radius: .28em; z-index: 1; pointer-events: none; opacity: .32; mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 6em 6em; }
 .card .vign { position: absolute; inset: .5em; border-radius: .28em; z-index: 1; pointer-events: none; background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0,0,0,.45)); }
-.card .photo { position: absolute; inset: .5em; width: calc(100% - 1em); height: calc(100% - 1em); object-fit: cover; object-position: 50% 20%; border-radius: .28em; z-index: 1; }
+.card .photo { position: absolute; inset: .5em; width: calc(100% - 1em); height: calc(100% - 1em); object-fit: cover; object-position: 50% 20%; border-radius: .28em; z-index: 2; pointer-events: none; }
 .card.has-photo .turf, .card.has-photo .art::after { display: none; }
 .card .posg { display: none; }
 .card .art { background-color: var(--c1); }
