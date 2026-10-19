@@ -1961,7 +1961,7 @@ body.pc-open { overflow: hidden; }
     const p = BY_NAME[c.n], v = V[c.v], [city, c1, c2] = TEAMS[p.t];
     const actionPhoto = v.caseHit ? null : PLAYER_ACTION_PHOTOS.get(p.n);
     const uploadedPhoto = PHOTOS[p.n] || '';
-    const headshot = !uploadedPhoto && !actionPhoto && v.caseHit ? playerHeadshot(p) : '';
+    const headshot = !uploadedPhoto && !actionPhoto ? playerHeadshot(p) : '';
     const photo = uploadedPhoto || actionPhoto?.url || headshot;
     const photoSource = uploadedPhoto ? 'upload' : actionPhoto ? 'action' : headshot ? 'headshot' : '';
     const br = brandOf(c);
@@ -2055,6 +2055,7 @@ body.pc-open { overflow: hidden; }
       for (const matchingCard of document.querySelectorAll('.card[data-photo-player][data-action-photo-required="true"]')) {
         if (matchingCard.dataset.photoPlayer === p.n) {
           matchingCard.querySelector('.photo[data-photo-source="action"]')?.remove();
+          addHeadshotPhoto(matchingCard, p);
           matchingCard.classList.toggle('has-photo', !!matchingCard.querySelector('.photo'));
           if (canRetry) delete matchingCard.dataset.photoRequested;
         }
@@ -2065,6 +2066,24 @@ body.pc-open { overflow: hidden; }
     };
     card.appendChild(image);
     card.classList.add('has-photo');
+  }
+  function addHeadshotPhoto(card, p) {
+    if (!p || PHOTOS[p.n] || card.querySelector('.photo')) return;
+    const url = playerHeadshot(p);
+    if (!url) return;
+    const image = document.createElement('img');
+    image.className = 'photo';
+    image.dataset.photoSource = 'headshot';
+    image.src = url;
+    image.alt = `Photo of ${p.n} playing football`;
+    image.loading = cardInViewport(card) ? 'eager' : 'lazy';
+    image.decoding = 'async';
+    image.onerror = () => {
+      image.remove();
+      card.classList.toggle('has-photo', !!card.querySelector('.photo'));
+      console.warn(`Could not load the ESPN player photo for ${p.n}.`);
+    };
+    card.appendChild(image);
   }
   async function loadActionPhoto(p) {
     if (PHOTOS[p.n] || PLAYER_ACTION_PHOTOS.has(p.n) || ACTION_PHOTO_LOOKUPS.has(p.n)) return;
