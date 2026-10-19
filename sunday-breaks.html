@@ -2072,13 +2072,10 @@ body.pc-open { overflow: hidden; }
     ACTION_PHOTO_LOOKUPS.add(p.n);
     const searchName = p.n.replace(/\s+\([A-Z]{2,3}\)$/, '');
     const suffixlessName = searchName.replace(/\s+(?:Jr\.?|Sr\.?|II|III|IV)$/i, '');
-    const queries = [
+    const queries = [...new Set([
       `"${searchName}" football`,
-      `"${searchName}" NFL`,
-      `${searchName} football`,
-      `"${searchName}" ${TEAMS[p.t][0]} football`,
-    ];
-    if (suffixlessName !== searchName) queries.push(`"${suffixlessName}" football`);
+      `"${suffixlessName}" ${TEAMS[p.t][0]} football`,
+    ])];
     try {
       const results = await Promise.allSettled(queries.map(async query => {
         const params = new URLSearchParams({
@@ -2115,21 +2112,28 @@ body.pc-open { overflow: hidden; }
         const description = htmlText(meta.ImageDescription?.value);
         const categories = (page.categories || []).map(category => category.title.replace(/^Category:/, ''));
         const normalize = value => value.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const exactPlayerMatch = normalize(`${title} ${description} ${categories.join(' ')}`).includes(normalize(searchName));
+        const playerText = normalize(`${title} ${description} ${categories.join(' ')}`);
+        const exactPlayerMatch = playerText.includes(normalize(searchName)) || playerText.includes(normalize(suffixlessName));
         const gameCategory = categories.some(category => /\b(nfl|american football|football)\b/i.test(category))
           && categories.some(category => /\b(week \d|vs\.?|game|season|bowl|at)\b/i.test(category));
+        const playerSeason = categories.some(category => {
+          const normalizedCategory = normalize(category);
+          return normalizedCategory.includes(normalize(suffixlessName)) && /\bin\s+(?:19|20)\d{2}\b/i.test(category);
+        });
         const actionDescription = /\b(runs?|running|rush(?:es|ing)?|throws?|throwing|passes|passing|catches|catching|tackles?|sacks?|snaps?|touchdowns?|intercepts?|playing|game action)\b/i.test(`${title} ${description} ${categories.join(' ')}`);
-        const playerNamedInFile = normalize(`${title} ${description}`).includes(normalize(searchName));
+        const playerNamedInFile = normalize(`${title} ${description}`).includes(normalize(searchName))
+          || normalize(`${title} ${description}`).includes(normalize(suffixlessName));
         const matchupInTitle = /\b(vs\.?|at)\b/i.test(title) && /(?:19|20)\d{2}/.test(title);
+        const gameImage = gameCategory || playerSeason || matchupInTitle;
         const license = htmlText(meta.LicenseShortName?.value);
-        if (!info?.thumburl || !info.descriptionurl || !exactPlayerMatch || !gameCategory || !(actionDescription || matchupInTitle)
+        if (!info?.thumburl || !info.descriptionurl || !exactPlayerMatch || !gameImage
           || /\b(headshot|portrait|white house|press conference|media day)\b/i.test(`${title} ${description}`)
           || !/^(CC0|CC BY(?:-SA)?(?:\s|$)|Public domain)/i.test(license)) continue;
         const imageUrl = new URL(info.thumburl), pageUrl = new URL(info.descriptionurl);
         if (FAILED_ACTION_PHOTO_URLS.get(p.n)?.has(imageUrl.href)) continue;
         if (imageUrl.protocol !== 'https:' || !['upload.wikimedia.org', 'thumb.wikimedia.org'].includes(imageUrl.hostname)
           || pageUrl.protocol !== 'https:' || pageUrl.hostname !== 'commons.wikimedia.org') continue;
-        const priority = (actionDescription ? 6 : 0) + (playerNamedInFile ? 2 : 0) + (matchupInTitle ? 2 : 0) + (gameCategory ? 1 : 0);
+        const priority = (actionDescription ? 6 : 0) + (playerNamedInFile ? 2 : 0) + (matchupInTitle ? 2 : 0) + (gameCategory || playerSeason ? 1 : 0);
         if (priority <= selectedPriority) continue;
         selectedPhoto = {
           url: imageUrl.href,
