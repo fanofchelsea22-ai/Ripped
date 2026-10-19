@@ -2950,7 +2950,7 @@ body.pc-open { overflow: hidden; }
     };
     lip.addEventListener('pointerup', finishPeel);
     lip.addEventListener('pointercancel', e => finishPeel(e, false));
-    requestAnimationFrame(() => { if (R && !R.done) keepMatTargetVisible($('tearBtn')); });
+    requestAnimationFrame(() => { if (R && !R.done) keepMatTargetVisible(document.querySelector('.stage')); });
   }
   function flipPack() {
     if (!R || R.flipped || R.torn) return;
