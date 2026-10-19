@@ -2057,6 +2057,7 @@ body.pc-open { overflow: hidden; }
       .then(data => {
         const pages = Object.values(data.query?.pages || {});
         let selectedPhoto = null;
+        let selectedPriority = -1;
         for (const page of pages) {
           const info = page.imageinfo?.[0];
           const meta = info?.extmetadata || {};
@@ -2066,22 +2067,27 @@ body.pc-open { overflow: hidden; }
           const normalize = value => value.toLowerCase().replace(/[^a-z0-9]/g, '');
           const exactPlayerMatch = normalize(`${title} ${description} ${categories.join(' ')}`).includes(normalize(searchName));
           const gameCategory = categories.some(category => /\b(nfl|american football|football)\b/i.test(category))
-            && categories.some(category => /\b(week \d|vs\.?|game|season|bowl)\b/i.test(category));
-          const actionDescription = /\b(runs?|running|throws?|throwing|passes|passing|catches|catching|tackles?|sacks?|snaps?|touchdowns?|intercepts?|playing|game action)\b/i.test(`${title} ${description}`);
+            && categories.some(category => /\b(week \d|vs\.?|game|season|bowl|at)\b/i.test(category));
+          const actionDescription = /\b(runs?|running|rush(?:es|ing)?|throws?|throwing|passes|passing|catches|catching|tackles?|sacks?|snaps?|touchdowns?|intercepts?|playing|game action)\b/i.test(`${title} ${description} ${categories.join(' ')}`);
+          const playerNamedInFile = normalize(`${title} ${description}`).includes(normalize(searchName));
+          const matchupInTitle = /\b(vs\.?|at)\b/i.test(title) && /(?:19|20)\d{2}/.test(title);
           const license = htmlText(meta.LicenseShortName?.value);
-          if (!info?.thumburl || !info.descriptionurl || !exactPlayerMatch || !(gameCategory || actionDescription)
+          if (!info?.thumburl || !info.descriptionurl || !exactPlayerMatch || !gameCategory || !(actionDescription || matchupInTitle)
             || /\b(headshot|portrait|white house|press conference|media day)\b/i.test(`${title} ${description}`)
             || !/^(CC0|CC BY(?:-SA)?(?:\s|$)|Public domain)/i.test(license)) continue;
           const imageUrl = new URL(info.thumburl), pageUrl = new URL(info.descriptionurl);
           if (imageUrl.protocol !== 'https:' || !['upload.wikimedia.org', 'thumb.wikimedia.org'].includes(imageUrl.hostname)
             || pageUrl.protocol !== 'https:' || pageUrl.hostname !== 'commons.wikimedia.org') continue;
+          const priority = (actionDescription ? 6 : 0) + (playerNamedInFile ? 2 : 0) + (matchupInTitle ? 2 : 0) + (gameCategory ? 1 : 0);
+          if (priority <= selectedPriority) continue;
           selectedPhoto = {
             url: imageUrl.href,
             pageUrl: pageUrl.href,
             artist: htmlText(meta.Artist?.value) || 'Wikimedia Commons contributor',
             license,
           };
-          if (actionDescription) break;
+          selectedPriority = priority;
+          if (priority === 11) break;
         }
         if (!selectedPhoto) {
           PLAYER_ACTION_PHOTOS.set(p.n, null);
