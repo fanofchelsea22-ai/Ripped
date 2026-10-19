@@ -1275,6 +1275,7 @@ body.pc-open { overflow: hidden; }
         </div>
         <div class="ripbar">
           <button type="button" class="buy ghost" id="sitBack">Sit back in your chair</button>
+          <button type="button" class="buy ghost" id="dkEndBox" hidden>End box &amp; shop</button>
           <button type="button" class="buy ghost" id="dkAll">Rip the rest</button>
 
         </div>
@@ -2804,7 +2805,7 @@ body.pc-open { overflow: hidden; }
       $('boxTape').textContent = 'Box spot';
       $('dkBox').innerHTML = `<button type="button" class="box-spot" id="boxSpot"><b>No box on the desk</b><span>Buy one on the computer and it gets delivered right here.</span></button>`;
       $('boxSpot').onclick = () => show('packs');
-      $('dkAll').hidden = true; $('dkDone').hidden = true;
+      $('dkEndBox').hidden = true; $('dkAll').hidden = true; $('dkDone').hidden = true;
       deskHints(); return;
     }
     $('boxTape').textContent = 'The box';
@@ -2812,6 +2813,7 @@ body.pc-open { overflow: hidden; }
     $('dkTitle').innerHTML = `<small>${esc(BRANDS[bx.b].name)} · ${bx.year || 2025} Football</small>${bx.name}`;
     $('bxLeft').textContent = b.left; $('bxPaid').textContent = fmt(b.paid);
     $('bxValue').textContent = fmt(b.value); $('bxValue').className = 'coin ' + (b.value >= b.paid ? 'up' : '');
+    $('dkEndBox').hidden = false;
     $('dkBox').innerHTML = deskBoxHTML(b);
     const box = $('dkBox').querySelector('.tbox');
     if (b.stage === 'wrapped') {
@@ -2841,6 +2843,7 @@ body.pc-open { overflow: hidden; }
     $('dkBox').querySelector('.tbox')?.classList.toggle('locked', busy);
     $('dkMid').classList.toggle('ripping', busy || !!$('dkShow').dataset.busy);
     $('room').classList.toggle('focus', busy || !!$('dkShow').dataset.busy);
+    $('dkEndBox').disabled = busy || !!$('dkShow').dataset.busy;
     $('dkAll').disabled = busy;
     $('matIdle').hidden = busy || !$('dkShow').hidden;
     $('rip').hidden = !busy;
@@ -2884,6 +2887,7 @@ body.pc-open { overflow: hidden; }
     const b = S.box; if (!b || b.topperTaken) return;
     const c = owned(b.topper); b.topperTaken = true; save();
     const show = $('dkShow'); show.dataset.busy = '1';
+    $('dkEndBox').disabled = true;
     show.innerHTML = `<div class="show-card">${cardHTML(c, 'idle')}</div><span>${esc(BOXES[b.key].topperName)}</span>`;
     show.hidden = false; $('matIdle').hidden = true; btn.remove();
     if (innerWidth < 960) $('dkMid').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
@@ -2946,6 +2950,19 @@ body.pc-open { overflow: hidden; }
   $('dkShop').onclick = () => { deskBox = null; renderDesk(); show('packs'); };
   $('dkBinder').onclick = () => show('binder');
   $('dkClear').onclick = () => { deskBox = null; renderDesk(); };
+  $('dkEndBox').onclick = () => {
+    const b = S.box;
+    if (!b || ripping() || $('dkShow').dataset.busy) return;
+    const packsLeft = b.left;
+    if (!confirm(`End this box and go to the shop? ${packsLeft} unopened pack${packsLeft === 1 ? '' : 's'} will be lost. Cards you already opened stay in your binder.`)) return;
+    S.box = null;
+    deskBox = null;
+    R = null;
+    save();
+    renderDesk();
+    show('packs');
+    toast('Box ended. Your opened cards are safe in your binder.');
+  };
   $('resumeBtn').onclick = () => show('box');
 
   // ---------- ripping ----------
