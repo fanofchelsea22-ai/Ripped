@@ -1971,7 +1971,7 @@ body.pc-open { overflow: hidden; }
       : c.v === 'bolt' || c.v === 'pixel' || c.v === 'glitch' ? '' : `<div class="instag">${esc(v.name)}</div>`;
     const slab = c.g ? `<div class="slab-label"><b>PRISTINE</b><span>${c.y || 2025} ${esc(br.short)} ${esc(last.toUpperCase())}<br>${esc(GRADE_NAME[c.g])}</span><i>${c.g}</i></div>` : '';
     scheduleActionPhotoScan();
-    return `<div class="card ${cls} ${c.g ? 'slabbed g' + c.g : ''} ${extra}" style="--c1:${c1};--c2:${c2}" data-id="${c.id}" data-photo-player="${esc(p.n)}">${slab}
+    return `<div class="card ${cls} ${c.g ? 'slabbed g' + c.g : ''} ${extra}" style="--c1:${c1};--c2:${c2}" data-id="${c.id}" data-photo-player="${esc(p.n)}" data-action-photo-required="${!v.caseHit}">${slab}
       <div class="art"></div>${v.art ? caseArt(c.v, hash(c.id + p.n), p, c1, c2) : '<div class="turf"></div>'}${ins}${playerSVG(p, c1, c2)}${photo ? `<img class="photo" src="${esc(photo)}" alt="${esc(p.n)} playing football" loading="lazy" decoding="async">` : ''}${relic}<div class="vign"></div><div class="grain"></div>
       <div class="setmark">${br.short} · ${String(c.y || 2025).slice(2)}</div>${serial}
       <div class="posg">${p.pos}</div>
@@ -1998,7 +1998,7 @@ body.pc-open { overflow: hidden; }
     actionPhotoScanScheduled = true;
     requestAnimationFrame(() => {
       actionPhotoScanScheduled = false;
-      for (const card of document.querySelectorAll('.card[data-photo-player]')) {
+      for (const card of document.querySelectorAll('.card[data-photo-player][data-action-photo-required="true"]')) {
         const name = card.dataset.photoPlayer;
         const photo = PLAYER_ACTION_PHOTOS.get(name);
         if (photo && !PHOTOS[name] && !card.querySelector('.photo')) addActionPhoto(card, BY_NAME[name], photo);
