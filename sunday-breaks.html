@@ -1957,7 +1957,10 @@ body.pc-open { overflow: hidden; }
   function cardHTML(c, extra = '') {
     const p = BY_NAME[c.n], v = V[c.v], [city, c1, c2] = TEAMS[p.t];
     const actionPhoto = PLAYER_ACTION_PHOTOS.get(p.n);
-    const photo = PHOTOS[p.n] || actionPhoto?.url || '';
+    const uploadedPhoto = PHOTOS[p.n] || '';
+    const headshot = !uploadedPhoto && !actionPhoto ? playerHeadshot(p) : '';
+    const photo = uploadedPhoto || actionPhoto?.url || headshot;
+    const photoSource = uploadedPhoto ? 'upload' : actionPhoto ? 'action' : headshot ? 'headshot' : '';
     const br = brandOf(c);
     const cls = `b-${c.b || 'chrome'} ` + (v.kind === 'ins' ? `ins i-${c.v}` : `v-${c.v}`) + (v.caseHit ? ' case' : '') + (photo ? ' has-photo' : '');
     const serial = v.run ? `<div class="serial">${v.run === 1 ? '1/1' : String(c.s).padStart(String(v.run).length, '0') + '/' + v.run}</div>` : '';
@@ -1975,7 +1978,7 @@ body.pc-open { overflow: hidden; }
     const slab = c.g ? `<div class="slab-label"><b>PRISTINE</b><span>${c.y || 2025} ${esc(br.short)} ${esc(last.toUpperCase())}<br>${esc(GRADE_NAME[c.g])}</span><i>${c.g}</i></div>` : '';
     scheduleActionPhotoScan();
     return `<div class="card ${cls} ${c.g ? 'slabbed g' + c.g : ''} ${extra}" style="--c1:${c1};--c2:${c2}" data-id="${c.id}" data-photo-player="${esc(p.n)}" data-action-photo-required="${!v.caseHit}">${slab}
-      <div class="art"></div>${v.art ? caseArt(c.v, hash(c.id + p.n), p, c1, c2) : '<div class="turf"></div>'}${ins}${playerSVG(p, c1, c2)}${photo ? `<img class="photo" src="${esc(photo)}" alt="${esc(p.n)} playing football" loading="lazy" decoding="async">` : ''}${relic}<div class="vign"></div><div class="grain"></div>
+      <div class="art"></div>${v.art ? caseArt(c.v, hash(c.id + p.n), p, c1, c2) : '<div class="turf"></div>'}${ins}${playerSVG(p, c1, c2)}${photo ? `<img class="photo" data-photo-source="${photoSource}" src="${esc(photo)}" alt="${esc(photoSource === 'action' ? `${p.n} playing football` : `${p.n} player photo`)}" loading="lazy" decoding="async">` : ''}${relic}<div class="vign"></div><div class="grain"></div>
       <div class="setmark">${br.short} · ${String(c.y || 2025).slice(2)}</div>${serial}
       <div class="posg">${p.pos}</div>
       ${isRC(c) ? '<div class="rc">RC</div>' : ''}${flag}${sig}
@@ -1989,6 +1992,10 @@ body.pc-open { overflow: hidden; }
     const node = document.createElement('div');
     node.innerHTML = value || '';
     return node.textContent.trim();
+  }
+  function playerHeadshot(p) {
+    const id = PLAYER_PHOTO_IDS[p.n];
+    return id ? `https://a.espncdn.com/i/headshots/nfl/players/full/${encodeURIComponent(id)}.png` : '';
   }
   function cardInViewport(card) {
     const rect = card.getBoundingClientRect();
@@ -2004,8 +2011,10 @@ body.pc-open { overflow: hidden; }
       for (const card of document.querySelectorAll('.card[data-photo-player][data-action-photo-required="true"]')) {
         const name = card.dataset.photoPlayer;
         const photo = PLAYER_ACTION_PHOTOS.get(name);
-        if (photo && !PHOTOS[name] && !card.querySelector('.photo')) addActionPhoto(card, BY_NAME[name], photo);
         const image = card.querySelector('.photo');
+        if (photo && !PHOTOS[name] && (!image || image.dataset.photoSource === 'headshot')) {
+          addActionPhoto(card, BY_NAME[name], photo);
+        }
         if (image && cardInViewport(card)) image.loading = 'eager';
         if (card.dataset.photoRequested || !cardInViewport(card) || PHOTOS[name] || PLAYER_ACTION_PHOTOS.has(name)) continue;
         card.dataset.photoRequested = 'true';
@@ -2018,16 +2027,20 @@ body.pc-open { overflow: hidden; }
     if (!document.hidden) scheduleActionPhotoScan();
   });
   function addActionPhoto(card, p, photo) {
-    if (!p || PHOTOS[p.n] || card.querySelector('.photo')) return;
+    if (!p || PHOTOS[p.n]) return;
+    const existingPhoto = card.querySelector('.photo');
+    if (existingPhoto && existingPhoto.dataset.photoSource !== 'headshot') return;
+    existingPhoto?.remove();
     const image = document.createElement('img');
     image.className = 'photo';
+    image.dataset.photoSource = 'action';
     image.src = photo.url;
     image.alt = `${p.n} playing football`;
     image.loading = cardInViewport(card) ? 'eager' : 'lazy';
     image.decoding = 'async';
     image.onerror = () => {
       image.remove();
-      card.classList.remove('has-photo');
+      card.classList.toggle('has-photo', !!card.querySelector('.photo'));
       if (PLAYER_ACTION_PHOTOS.get(p.n)?.url !== photo.url) return;
       const failedUrls = FAILED_ACTION_PHOTO_URLS.get(p.n) || new Set();
       failedUrls.add(photo.url);
@@ -2037,8 +2050,19 @@ body.pc-open { overflow: hidden; }
       else PLAYER_ACTION_PHOTOS.set(p.n, null);
       for (const matchingCard of document.querySelectorAll('.card[data-photo-player]')) {
         if (matchingCard.dataset.photoPlayer === p.n) {
-          matchingCard.querySelector('.photo')?.remove();
-          matchingCard.classList.remove('has-photo');
+          matchingCard.querySelector('.photo[data-photo-source="action"]')?.remove();
+          const fallback = playerHeadshot(p);
+          if (fallback && !matchingCard.querySelector('.photo') && !PHOTOS[p.n]) {
+            const fallbackImage = document.createElement('img');
+            fallbackImage.className = 'photo';
+            fallbackImage.dataset.photoSource = 'headshot';
+            fallbackImage.src = fallback;
+            fallbackImage.alt = `${p.n} player photo`;
+            fallbackImage.loading = cardInViewport(matchingCard) ? 'eager' : 'lazy';
+            fallbackImage.decoding = 'async';
+            matchingCard.appendChild(fallbackImage);
+          }
+          matchingCard.classList.toggle('has-photo', !!matchingCard.querySelector('.photo'));
           if (canRetry) delete matchingCard.dataset.photoRequested;
         }
       }
