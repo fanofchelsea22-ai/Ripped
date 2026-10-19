@@ -1945,6 +1945,7 @@ body.pc-open { overflow: hidden; }
   const PLAYER_ACTION_PHOTOS = new Map();
   const ACTION_PHOTO_LOOKUPS = new Set();
   const ACTION_PHOTO_RETRY_COUNTS = new Map();
+  const FAILED_ACTION_PHOTO_URLS = new Map();
 
   // ---------- card markup ----------
   const initials = n => {
@@ -2026,16 +2027,23 @@ body.pc-open { overflow: hidden; }
     image.onerror = () => {
       image.remove();
       card.classList.remove('has-photo');
-      if (!PLAYER_ACTION_PHOTOS.get(p.n)) return;
-      PLAYER_ACTION_PHOTOS.set(p.n, null);
+      if (PLAYER_ACTION_PHOTOS.get(p.n)?.url !== photo.url) return;
+      const failedUrls = FAILED_ACTION_PHOTO_URLS.get(p.n) || new Set();
+      failedUrls.add(photo.url);
+      FAILED_ACTION_PHOTO_URLS.set(p.n, failedUrls);
+      const canRetry = failedUrls.size < 3;
+      if (canRetry) PLAYER_ACTION_PHOTOS.delete(p.n);
+      else PLAYER_ACTION_PHOTOS.set(p.n, null);
       for (const matchingCard of document.querySelectorAll('.card[data-photo-player]')) {
         if (matchingCard.dataset.photoPlayer === p.n) {
           matchingCard.querySelector('.photo')?.remove();
           matchingCard.classList.remove('has-photo');
+          if (canRetry) delete matchingCard.dataset.photoRequested;
         }
       }
       if (modalPlayerName === p.n && !$('modal').hidden) updatePhotoCredit(null);
       console.warn(`Could not load the Wikimedia Commons action photo for ${p.n}.`);
+      if (canRetry) scheduleActionPhotoScan();
     };
     card.appendChild(image);
     card.classList.add('has-photo');
@@ -2099,6 +2107,7 @@ body.pc-open { overflow: hidden; }
           || /\b(headshot|portrait|white house|press conference|media day)\b/i.test(`${title} ${description}`)
           || !/^(CC0|CC BY(?:-SA)?(?:\s|$)|Public domain)/i.test(license)) continue;
         const imageUrl = new URL(info.thumburl), pageUrl = new URL(info.descriptionurl);
+        if (FAILED_ACTION_PHOTO_URLS.get(p.n)?.has(imageUrl.href)) continue;
         if (imageUrl.protocol !== 'https:' || !['upload.wikimedia.org', 'thumb.wikimedia.org'].includes(imageUrl.hostname)
           || pageUrl.protocol !== 'https:' || pageUrl.hostname !== 'commons.wikimedia.org') continue;
         const priority = (actionDescription ? 6 : 0) + (playerNamedInFile ? 2 : 0) + (matchupInTitle ? 2 : 0) + (gameCategory ? 1 : 0);
