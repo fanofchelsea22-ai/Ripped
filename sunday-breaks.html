@@ -1944,6 +1944,7 @@ body.pc-open { overflow: hidden; }
   const savePhotos = () => { try { localStorage.setItem(PHOTO_KEY, JSON.stringify(PHOTOS)); return true; } catch (e) { return false; } };
   const PLAYER_ACTION_PHOTOS = new Map();
   const ACTION_PHOTO_LOOKUPS = new Set();
+  const ACTION_PHOTO_RETRY_COUNTS = new Map();
 
   // ---------- card markup ----------
   const initials = n => {
@@ -2039,70 +2040,104 @@ body.pc-open { overflow: hidden; }
     card.appendChild(image);
     card.classList.add('has-photo');
   }
-  function loadActionPhoto(p) {
+  async function loadActionPhoto(p) {
     if (PHOTOS[p.n] || PLAYER_ACTION_PHOTOS.has(p.n) || ACTION_PHOTO_LOOKUPS.has(p.n)) return;
     ACTION_PHOTO_LOOKUPS.add(p.n);
     const searchName = p.n.replace(/\s+\([A-Z]{2,3}\)$/, '');
-    const params = new URLSearchParams({
-      action: 'query', generator: 'search', gsrsearch: `"${searchName}" football`,
-      gsrnamespace: '6', gsrlimit: '30', prop: 'imageinfo|categories',
-      iiprop: 'url|extmetadata', iiurlwidth: '1000', cllimit: '50',
-      format: 'json', origin: '*',
-    });
-    fetch(`https://commons.wikimedia.org/w/api.php?${params}`)
-      .then(response => {
+    const suffixlessName = searchName.replace(/\s+(?:Jr\.?|Sr\.?|II|III|IV)$/i, '');
+    const queries = [
+      `"${searchName}" football`,
+      `"${searchName}" NFL`,
+      `${searchName} football`,
+      `"${searchName}" ${TEAMS[p.t][0]} football`,
+    ];
+    if (suffixlessName !== searchName) queries.push(`"${suffixlessName}" football`);
+    try {
+      const results = await Promise.allSettled(queries.map(async query => {
+        const params = new URLSearchParams({
+          action: 'query', generator: 'search', gsrsearch: query,
+          gsrnamespace: '6', gsrlimit: '50', prop: 'imageinfo|categories',
+          iiprop: 'url|extmetadata', iiurlwidth: '1000', cllimit: '50',
+          format: 'json', origin: '*',
+        });
+        const response = await fetch(`https://commons.wikimedia.org/w/api.php?${params}`);
         if (!response.ok) throw new Error(`Wikimedia Commons returned HTTP ${response.status}`);
-        return response.json();
-      })
-      .then(data => {
-        const pages = Object.values(data.query?.pages || {});
-        let selectedPhoto = null;
-        let selectedPriority = -1;
-        for (const page of pages) {
-          const info = page.imageinfo?.[0];
-          const meta = info?.extmetadata || {};
-          const title = page.title.replace(/^File:/, '');
-          const description = htmlText(meta.ImageDescription?.value);
-          const categories = (page.categories || []).map(category => category.title.replace(/^Category:/, ''));
-          const normalize = value => value.toLowerCase().replace(/[^a-z0-9]/g, '');
-          const exactPlayerMatch = normalize(`${title} ${description} ${categories.join(' ')}`).includes(normalize(searchName));
-          const gameCategory = categories.some(category => /\b(nfl|american football|football)\b/i.test(category))
-            && categories.some(category => /\b(week \d|vs\.?|game|season|bowl|at)\b/i.test(category));
-          const actionDescription = /\b(runs?|running|rush(?:es|ing)?|throws?|throwing|passes|passing|catches|catching|tackles?|sacks?|snaps?|touchdowns?|intercepts?|playing|game action)\b/i.test(`${title} ${description} ${categories.join(' ')}`);
-          const playerNamedInFile = normalize(`${title} ${description}`).includes(normalize(searchName));
-          const matchupInTitle = /\b(vs\.?|at)\b/i.test(title) && /(?:19|20)\d{2}/.test(title);
-          const license = htmlText(meta.LicenseShortName?.value);
-          if (!info?.thumburl || !info.descriptionurl || !exactPlayerMatch || !gameCategory || !(actionDescription || matchupInTitle)
-            || /\b(headshot|portrait|white house|press conference|media day)\b/i.test(`${title} ${description}`)
-            || !/^(CC0|CC BY(?:-SA)?(?:\s|$)|Public domain)/i.test(license)) continue;
-          const imageUrl = new URL(info.thumburl), pageUrl = new URL(info.descriptionurl);
-          if (imageUrl.protocol !== 'https:' || !['upload.wikimedia.org', 'thumb.wikimedia.org'].includes(imageUrl.hostname)
-            || pageUrl.protocol !== 'https:' || pageUrl.hostname !== 'commons.wikimedia.org') continue;
-          const priority = (actionDescription ? 6 : 0) + (playerNamedInFile ? 2 : 0) + (matchupInTitle ? 2 : 0) + (gameCategory ? 1 : 0);
-          if (priority <= selectedPriority) continue;
-          selectedPhoto = {
-            url: imageUrl.href,
-            pageUrl: pageUrl.href,
-            artist: htmlText(meta.Artist?.value) || 'Wikimedia Commons contributor',
-            license,
-          };
-          selectedPriority = priority;
-          if (priority === 11) break;
+        const data = await response.json();
+        if (data.error) throw new Error(data.error.info || 'Wikimedia Commons search failed');
+        return Object.values(data.query?.pages || {});
+      }));
+      const pagesById = new Map();
+      let failedSearches = 0;
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        if (result.status === 'rejected') {
+          failedSearches++;
+          console.warn(`Wikimedia Commons search failed for ${p.n} (${queries[i]}).`, result.reason);
+          continue;
         }
-        if (!selectedPhoto) {
-          PLAYER_ACTION_PHOTOS.set(p.n, null);
-          return;
-        }
-        PLAYER_ACTION_PHOTOS.set(p.n, selectedPhoto);
-        if (modalPlayerName === p.n && !$('modal').hidden) updatePhotoCredit(selectedPhoto);
-        for (const card of document.querySelectorAll('.card[data-photo-player]')) {
-          if (card.dataset.photoPlayer === p.n) addActionPhoto(card, p, selectedPhoto);
-        }
-      })
-      .catch(error => {
+        for (const page of result.value) pagesById.set(page.pageid, page);
+      }
+      if (failedSearches === results.length) throw new Error('All Wikimedia Commons searches failed.');
+      const pages = [...pagesById.values()];
+      let selectedPhoto = null;
+      let selectedPriority = -1;
+      for (const page of pages) {
+        const info = page.imageinfo?.[0];
+        const meta = info?.extmetadata || {};
+        const title = page.title.replace(/^File:/, '');
+        const description = htmlText(meta.ImageDescription?.value);
+        const categories = (page.categories || []).map(category => category.title.replace(/^Category:/, ''));
+        const normalize = value => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const exactPlayerMatch = normalize(`${title} ${description} ${categories.join(' ')}`).includes(normalize(searchName));
+        const gameCategory = categories.some(category => /\b(nfl|american football|football)\b/i.test(category))
+          && categories.some(category => /\b(week \d|vs\.?|game|season|bowl|at)\b/i.test(category));
+        const actionDescription = /\b(runs?|running|rush(?:es|ing)?|throws?|throwing|passes|passing|catches|catching|tackles?|sacks?|snaps?|touchdowns?|intercepts?|playing|game action)\b/i.test(`${title} ${description} ${categories.join(' ')}`);
+        const playerNamedInFile = normalize(`${title} ${description}`).includes(normalize(searchName));
+        const matchupInTitle = /\b(vs\.?|at)\b/i.test(title) && /(?:19|20)\d{2}/.test(title);
+        const license = htmlText(meta.LicenseShortName?.value);
+        if (!info?.thumburl || !info.descriptionurl || !exactPlayerMatch || !gameCategory || !(actionDescription || matchupInTitle)
+          || /\b(headshot|portrait|white house|press conference|media day)\b/i.test(`${title} ${description}`)
+          || !/^(CC0|CC BY(?:-SA)?(?:\s|$)|Public domain)/i.test(license)) continue;
+        const imageUrl = new URL(info.thumburl), pageUrl = new URL(info.descriptionurl);
+        if (imageUrl.protocol !== 'https:' || !['upload.wikimedia.org', 'thumb.wikimedia.org'].includes(imageUrl.hostname)
+          || pageUrl.protocol !== 'https:' || pageUrl.hostname !== 'commons.wikimedia.org') continue;
+        const priority = (actionDescription ? 6 : 0) + (playerNamedInFile ? 2 : 0) + (matchupInTitle ? 2 : 0) + (gameCategory ? 1 : 0);
+        if (priority <= selectedPriority) continue;
+        selectedPhoto = {
+          url: imageUrl.href,
+          pageUrl: pageUrl.href,
+          artist: htmlText(meta.Artist?.value) || 'Wikimedia Commons contributor',
+          license,
+        };
+        selectedPriority = priority;
+        if (priority === 11) break;
+      }
+      if (!selectedPhoto) {
+        if (failedSearches) throw new Error('Some Wikimedia Commons searches failed before a verified photo was found.');
         PLAYER_ACTION_PHOTOS.set(p.n, null);
-        console.warn(`Could not search Wikimedia Commons for an action photo of ${p.n}.`, error);
-      });
+        return;
+      }
+      PLAYER_ACTION_PHOTOS.set(p.n, selectedPhoto);
+      ACTION_PHOTO_RETRY_COUNTS.delete(p.n);
+      if (modalPlayerName === p.n && !$('modal').hidden) updatePhotoCredit(selectedPhoto);
+      for (const card of document.querySelectorAll('.card[data-photo-player]')) {
+        if (card.dataset.photoPlayer === p.n) addActionPhoto(card, p, selectedPhoto);
+      }
+    } catch (error) {
+      const retries = ACTION_PHOTO_RETRY_COUNTS.get(p.n) || 0;
+      console.warn(`Could not search Wikimedia Commons for an action photo of ${p.n}.`, error);
+      if (retries < 2) {
+        ACTION_PHOTO_RETRY_COUNTS.set(p.n, retries + 1);
+        setTimeout(() => {
+          for (const card of document.querySelectorAll('.card[data-photo-player]')) {
+            if (card.dataset.photoPlayer === p.n) delete card.dataset.photoRequested;
+          }
+          scheduleActionPhotoScan();
+        }, (retries + 1) * 30_000);
+      }
+    } finally {
+      ACTION_PHOTO_LOOKUPS.delete(p.n);
+    }
   }
 
   // ---------- player illustration: shaded, padded athlete in team uniform, posed by position ----------
